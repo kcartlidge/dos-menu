@@ -22,6 +22,7 @@ var
   Filename: string;
   Ch: Char;
   MenuList: PMenu;
+  TopMenu: PMenu;
 
 function Trim(S: string): string;
 var
@@ -163,6 +164,110 @@ begin
   Writeln; { Blank line after last menu }
 end;
 
+procedure DisplayMenu(MenuToDisplay: PMenu);
+var
+  CurrentOption: PMenuOption;
+  OptionKey: Char;
+  UserChoice: Char;
+  ValidChoice: Boolean;
+  MaxOption: Char;
+  Done: Boolean;
+begin
+  Done := False;
+  
+  while not Done do
+  begin
+    ClrScr;  { Clear the screen }
+    
+    { Display menu title (one line down and one character indented) }
+    Writeln;
+    Writeln(' ', MenuToDisplay^.Title);
+    Writeln;  { Blank line }
+    
+    { Display options with single character prefix }
+    CurrentOption := MenuToDisplay^.Options;
+    OptionKey := 'A';
+    while CurrentOption <> nil do
+    begin
+      Writeln(' ', OptionKey, ' - ', CurrentOption^.Name);
+      CurrentOption := CurrentOption^.Next;
+      OptionKey := Succ(OptionKey);
+    end;
+    
+    { Calculate the maximum option key (one before the last used) }
+    MaxOption := Pred(OptionKey);
+    
+    Writeln;  { Blank line }
+    Writeln(' Q - Quit');
+    Writeln;  { Blank line }
+    Write('Your choice? ');  { No CR/LF, just the prompt }
+    
+    { Loop waiting for valid key }
+    repeat
+      UserChoice := UpCase(ReadKey);  { Read key and convert to uppercase }
+      ValidChoice := (UserChoice = 'Q') or ((UserChoice >= 'A') and (UserChoice <= MaxOption));
+      
+      if not ValidChoice then
+      begin
+        { Invalid choice - just wait for another key }
+        { Could add a beep or other feedback here }
+      end;
+    until ValidChoice;
+    
+    { Handle the choice - only Q exits the loop }
+    if UserChoice = 'Q' then
+    begin
+      Done := True;  { Exit the outer loop }
+    end
+    else
+    begin
+      { Valid option selected but not implemented - loop will redisplay menu }
+    end;
+  end;
+end;
+
+procedure CreateTopMenu;
+var
+  CurrentMenu: PMenu;
+  CurrentOption: PMenuOption;
+  TempOption: PMenuOption;
+  MenuKey: Char;
+begin
+  { Create the TopMenu }
+  New(TopMenu);
+  TopMenu^.Title := 'Menus';
+  TopMenu^.Options := nil;
+  TopMenu^.Next := nil;
+  
+  { Add each loaded menu as an option }
+  CurrentMenu := MenuList;
+  MenuKey := 'A';
+  
+  while CurrentMenu <> nil do
+  begin
+    { Create new option for this menu }
+    New(CurrentOption);
+    CurrentOption^.Name := CurrentMenu^.Title;
+    CurrentOption^.Path := '';  { Not used for menu navigation }
+    CurrentOption^.Next := nil;
+    
+    { Link to TopMenu options }
+    if TopMenu^.Options = nil then
+      TopMenu^.Options := CurrentOption
+    else
+    begin
+      { Find end of options list and add there }
+      TempOption := TopMenu^.Options;
+      while TempOption^.Next <> nil do
+        TempOption := TempOption^.Next;
+      TempOption^.Next := CurrentOption;
+    end;
+    
+    CurrentMenu := CurrentMenu^.Next;
+    MenuKey := Succ(MenuKey);
+  end;
+end;
+
 begin
   ClrScr;  { Clear the screen using TP5 library method }
   
@@ -190,6 +295,14 @@ begin
     { Load the menu file (validation handled inside) }
     Writeln('Loading menu file: ', Filename);
     LoadMenuFile(Filename);
-    Writeln('Menu file loaded successfully.');
+    
+    { Create the TopMenu with all loaded menus as options }
+    CreateTopMenu;
+    
+    { Display the TopMenu }
+    if TopMenu <> nil then
+      DisplayMenu(TopMenu);
   end;
+  
+  ClrScr;  { Clear the screen when exiting }
 end. 
