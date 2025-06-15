@@ -4,6 +4,7 @@ uses
   Crt, Dos;
 
 type
+  { Menu option type }
   PMenuOption = ^TMenuOption;
   TMenuOption = record
     Name: string[40];
@@ -11,6 +12,7 @@ type
     Next: PMenuOption;
   end;
 
+  { Menu type }
   PMenu = ^TMenu;
   TMenu = record
     Title: string[30];
@@ -23,7 +25,25 @@ var
   Ch: Char;
   MenuList: PMenu;
   TopMenu: PMenu;
+  OriginalTextColor, OriginalBackgroundColor: Byte;
 
+{ Clear the screen with menu colors }
+procedure ClearScreenWithMenuColors;
+begin
+  TextBackground(Blue);
+  TextColor(Yellow);
+  ClrScr;
+end;
+
+{ Clear the screen with (saved) original colors }
+procedure ClearScreenWithOriginalColors;
+begin
+  TextBackground(OriginalBackgroundColor);
+  TextColor(OriginalTextColor);
+  ClrScr;
+end;
+
+{ Trim whitespace from both ends of a string }
 function Trim(S: string): string;
 var
   Start, EndPos: integer;
@@ -43,6 +63,19 @@ begin
   end;
 end;
 
+{ Convert a string to uppercase }
+function ToUpper(S: string): string;
+var
+  I: integer;
+  Result: string;
+begin
+  Result := '';
+  for I := 1 to Length(S) do
+    Result := Result + UpCase(S[I]);
+  ToUpper := Result;
+end;
+
+{ Load a menu file from disk }
 procedure LoadMenuFile(MenuFilename: string);
 var
   CurrentMenu: PMenu;
@@ -56,11 +89,14 @@ var
   TempOption: PMenuOption;
   F: Text;
   ErrorCode: integer;
+  MenuCount: integer;
+  OptionCount: integer;
+  StopReading: Boolean;
 begin
-  { Check if file has .ini extension }
-  if (Pos('.ini', MenuFilename) = 0) and (Pos('.INI', MenuFilename) = 0) then
+  { Check if the file has an .ini extension }
+  if (Pos('.INI', MenuFilename) = 0) then
   begin
-    Writeln('Error: File must have .ini extension');
+    Writeln('Error: File must have a .INI extension');
     Writeln('Provided: ', MenuFilename);
     Halt(2);
   end;
@@ -81,11 +117,12 @@ begin
   
   MenuList := nil;
   CurrentMenu := nil;
-  
   LineNum := 0;
-  Writeln; { Blank line before first menu }
-  
-  while not Eof(F) do
+  MenuCount := 0;
+  OptionCount := 0;
+  StopReading := False;
+  Writeln;
+  while (not Eof(F)) and (not StopReading) do
   begin
     Readln(F, Line);
     LineNum := LineNum + 1;
@@ -96,32 +133,44 @@ begin
       { Check if this is a menu section [Title] }
       if (Length(Line) > 2) and (Line[1] = '[') then
       begin
-        BracketPos := Pos(']', Line);
-        if BracketPos > 2 then
+        { Check if we've reached the maximum number of menus }
+        if MenuCount >= 12 then
         begin
-          MenuTitle := Copy(Line, 2, BracketPos - 2);
-          
-          { Start new line for new menu }
-          if CurrentMenu <> nil then
-            Writeln;
-          Write(MenuTitle, ' ');
-          
-          { Create new menu }
-          New(CurrentMenu);
-          CurrentMenu^.Title := MenuTitle;
-          CurrentMenu^.Options := nil;
-          CurrentMenu^.Next := nil;
-          
-          { Link to menu list }
-          if MenuList = nil then
-            MenuList := CurrentMenu
-          else
+          Writeln;
+          Writeln('Warning: Maximum of 12 menus reached. Stopping file read.');
+          StopReading := True;
+        end
+        else
+        begin
+          BracketPos := Pos(']', Line);
+          if BracketPos > 2 then
           begin
-            { Find end of menu list and add there }
-            TempMenu := MenuList;
-            while TempMenu^.Next <> nil do
-              TempMenu := TempMenu^.Next;
-            TempMenu^.Next := CurrentMenu;
+            MenuTitle := Copy(Line, 2, BracketPos - 2);
+            
+            { Start new line for new menu when showing load progress }
+            if CurrentMenu <> nil then Writeln;
+            Write(MenuTitle, ' ');
+            
+            { Create new menu }
+            New(CurrentMenu);
+            CurrentMenu^.Title := MenuTitle;
+            CurrentMenu^.Options := nil;
+            CurrentMenu^.Next := nil;
+            
+            { Link to menu list }
+            if MenuList = nil then
+              MenuList := CurrentMenu
+            else
+            begin
+              { Find end of menu list and add it there }
+              TempMenu := MenuList;
+              while TempMenu^.Next <> nil do
+                TempMenu := TempMenu^.Next;
+              TempMenu^.Next := CurrentMenu;
+            end;
+            
+            MenuCount := MenuCount + 1;
+            OptionCount := 0;  { Reset option count for new menu }
           end;
         end;
       end
@@ -131,28 +180,39 @@ begin
         EqualPos := Pos('=', Line);
         if (EqualPos > 1) and (CurrentMenu <> nil) then
         begin
-          OptionName := Trim(Copy(Line, 1, EqualPos - 1));
-          OptionPath := Trim(Copy(Line, EqualPos + 1, Length(Line) - EqualPos));
-          
-          { Show dot for each option }
-          Write('.');
-          
-          { Create new option }
-          New(CurrentOption);
-          CurrentOption^.Name := OptionName;
-          CurrentOption^.Path := OptionPath;
-          CurrentOption^.Next := nil;
-          
-          { Link to menu options }
-          if CurrentMenu^.Options = nil then
-            CurrentMenu^.Options := CurrentOption
+          { Check if we've reached the maximum number of options for this menu }
+          if OptionCount >= 12 then
+          begin
+            { Skip this option and continue reading for next menu }
+            { Continue is handled by the loop structure }
+          end
           else
           begin
-            { Find end of options list and add there }
-            TempOption := CurrentMenu^.Options;
-            while TempOption^.Next <> nil do
-              TempOption := TempOption^.Next;
-            TempOption^.Next := CurrentOption;
+            OptionName := Trim(Copy(Line, 1, EqualPos - 1));
+            OptionPath := Trim(Copy(Line, EqualPos + 1, Length(Line) - EqualPos));
+            
+            { Show dot for each option to indicate loading progress }
+            Write('.');
+            
+            { Create new option }
+            New(CurrentOption);
+            CurrentOption^.Name := OptionName;
+            CurrentOption^.Path := OptionPath;
+            CurrentOption^.Next := nil;
+            
+            { Link to menu options }
+            if CurrentMenu^.Options = nil then
+              CurrentMenu^.Options := CurrentOption
+            else
+            begin
+              { Find end of options list and add it there }
+              TempOption := CurrentMenu^.Options;
+              while TempOption^.Next <> nil do
+                TempOption := TempOption^.Next;
+              TempOption^.Next := CurrentOption;
+            end;
+            
+            OptionCount := OptionCount + 1;
           end;
         end;
       end;
@@ -160,10 +220,23 @@ begin
   end;
   
   Close(F);
-  Writeln; { New line at end of loading }
-  Writeln; { Blank line after last menu }
+  Writeln;
+  Writeln;
 end;
 
+{ Show an option with a single character prefix }
+procedure ShowOption(Letter: Char; Text: string);
+begin
+  Write(' ');
+  TextColor(White);
+  TextBackground(Black);
+  Write(' ', Letter, ' ');
+  TextColor(Yellow);
+  TextBackground(Blue);
+  Writeln(' ', Text);
+end;
+
+{ Display a menu (or submenu) }
 procedure DisplayMenu(MenuToDisplay: PMenu);
 var
   CurrentOption: PMenuOption;
@@ -172,24 +245,29 @@ var
   ValidChoice: Boolean;
   MaxOption: Char;
   Done: Boolean;
+  SelectedOption: PMenuOption;
+  OptionIndex: Integer;
+  TargetMenu: PMenu;
 begin
   Done := False;
-  
+
+  { Display the menu until the user quits }
   while not Done do
   begin
-    ClrScr;  { Clear the screen }
-    
-    { Display menu title (one line down and one character indented) }
+    { Show the menu title }
+    ClearScreenWithMenuColors;
     Writeln;
-    Writeln(' ', MenuToDisplay^.Title);
-    Writeln;  { Blank line }
+    TextColor(White);
+    Writeln(' ', ToUpper(MenuToDisplay^.Title));
+    TextColor(Yellow);
+    Writeln;
     
     { Display options with single character prefix }
     CurrentOption := MenuToDisplay^.Options;
     OptionKey := 'A';
     while CurrentOption <> nil do
     begin
-      Writeln(' ', OptionKey, ' - ', CurrentOption^.Name);
+      ShowOption(OptionKey, CurrentOption^.Name);
       CurrentOption := CurrentOption^.Next;
       OptionKey := Succ(OptionKey);
     end;
@@ -197,35 +275,82 @@ begin
     { Calculate the maximum option key (one before the last used) }
     MaxOption := Pred(OptionKey);
     
-    Writeln;  { Blank line }
-    Writeln(' Q - Quit');
-    Writeln;  { Blank line }
-    Write('Your choice? ');  { No CR/LF, just the prompt }
+    { Show the user a prompt }
+    Writeln;
+    if MenuToDisplay = TopMenu then
+    begin
+      ShowOption('Q', 'Quit');
+    end else begin
+      ShowOption('Q', 'Back');
+    end;
+    Writeln;
+    Write(' Your choice? ');
     
     { Loop waiting for valid key }
     repeat
-      UserChoice := UpCase(ReadKey);  { Read key and convert to uppercase }
+      UserChoice := ReadKey;
+      { Convert Escape key to Q }
+      if UserChoice = #27 then UserChoice := 'Q'
+      else UserChoice := UpCase(UserChoice);  { Always uppercase }
       ValidChoice := (UserChoice = 'Q') or ((UserChoice >= 'A') and (UserChoice <= MaxOption));
       
       if not ValidChoice then
       begin
-        { Invalid choice - just wait for another key }
-        { Could add a beep or other feedback here }
+        Sound(440);  { 440 Hz = A note }
+        Delay(100);  { Duration in milliseconds }
+        NoSound;
       end;
     until ValidChoice;
     
-    { Handle the choice - only Q exits the loop }
+    { Handle the choice - only Q/Escape exits the loop }
     if UserChoice = 'Q' then
     begin
-      Done := True;  { Exit the outer loop }
+      Done := True;
     end
     else
     begin
-      { Valid option selected but not implemented - loop will redisplay menu }
+      { Find the selected option }
+      OptionIndex := Ord(UserChoice) - Ord('A');
+      SelectedOption := MenuToDisplay^.Options;
+      while (OptionIndex > 0) and (SelectedOption <> nil) do
+      begin
+        SelectedOption := SelectedOption^.Next;
+        OptionIndex := OptionIndex - 1;
+      end;
+      
+      { Action the selected option }
+      if SelectedOption <> nil then
+      begin
+        { Check if this is a submenu (TopMenu) or a command entry }
+        if MenuToDisplay = TopMenu then
+        begin
+          { This is the TopMenu - find the corresponding submenu }
+          TargetMenu := MenuList;
+          while (TargetMenu <> nil) and (TargetMenu^.Title <> SelectedOption^.Name) do
+            TargetMenu := TargetMenu^.Next;
+          
+          if TargetMenu <> nil then
+          begin
+            { Recursively display the submenu }
+            DisplayMenu(TargetMenu);
+          end;
+        end
+        else
+        begin
+          { This is a submenu - display the command details }
+          ClearScreenWithOriginalColors;
+          Writeln(SelectedOption^.Name);
+          Writeln(SelectedOption^.Path);
+          Writeln;
+          Write('Press any key to continue ... ');
+          Ch := ReadKey;
+        end;
+      end;
     end;
   end;
 end;
 
+{ Create the TopMenu by adding each loaded menu as an option }
 procedure CreateTopMenu;
 var
   CurrentMenu: PMenu;
@@ -233,7 +358,6 @@ var
   TempOption: PMenuOption;
   MenuKey: Char;
 begin
-  { Create the TopMenu }
   New(TopMenu);
   TopMenu^.Title := 'Menus';
   TopMenu^.Options := nil;
@@ -269,19 +393,33 @@ begin
 end;
 
 begin
-  ClrScr;  { Clear the screen using TP5 library method }
+  { Save original colors }
+  OriginalTextColor := TextAttr and $0F;
+  OriginalBackgroundColor := (TextAttr shr 4) and $0F;
+  ClearScreenWithOriginalColors;
   
   { Check if filename was provided as command line argument }
   if ParamCount = 0 then
   begin
     { No filename provided - display instructions }
-    Writeln('MENU - An MSDOS menu system');
+    Writeln('MENU');
+    Writeln('Copyright 2025 K Cartlidge');
     Writeln;
-    Writeln('Usage:');
-    Writeln('  menu <menu-file>');
+    Writeln('Usage:  menu <menu-file>');
     Writeln;
-    Writeln('The menu file must be in .ini format');
-    Writeln('Example: menu example.ini');
+    Writeln('The menu file must be an .INI file');
+    Writeln('where each section is a menu and each');
+    Writeln('item is an option within that menu.');
+    Writeln('Up to 12 menus of up to 12 options each.');
+    Writeln;
+    Writeln('  # My menu file');
+    Writeln;
+    Writeln('  [Games]');
+    Writeln('  Elite+ = C:\GAMES\ELITE');
+    Writeln('  Prince of Persia = C:\GAMES\PRINCE');
+    Writeln;
+    Writeln('The file must use CRLF line endings.');
+    Writeln;
     Writeln;
     Write('Press any key to continue ... ');
     Ch := ReadKey;
@@ -289,20 +427,15 @@ begin
   end
   else
   begin
-    { Filename provided - get it from command line }
-    Filename := ParamStr(1);
-    
     { Load the menu file (validation handled inside) }
+    Filename := ToUpper(ParamStr(1));
     Writeln('Loading menu file: ', Filename);
     LoadMenuFile(Filename);
     
-    { Create the TopMenu with all loaded menus as options }
+    { Create and display the TopMenu }
     CreateTopMenu;
-    
-    { Display the TopMenu }
-    if TopMenu <> nil then
-      DisplayMenu(TopMenu);
+    if TopMenu <> nil then DisplayMenu(TopMenu);
   end;
   
-  ClrScr;  { Clear the screen when exiting }
+  ClearScreenWithOriginalColors;
 end. 

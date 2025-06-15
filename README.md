@@ -2,6 +2,9 @@
 
 Standalone EXE built from Turbo Pascal 5 source.
 
+- Copyright 2025 K Cartlidge
+- Licensed under the [AGPL](./LICENSE.md)
+
 ## Usage
 
 ``` dos
