@@ -337,10 +337,42 @@ begin
         end
         else
         begin
-          { This is a submenu - display the command details }
+          { This is a submenu - execute the command }
           ClearScreenWithOriginalColors;
           Writeln(SelectedOption^.Name);
           Writeln(SelectedOption^.Path);
+          Writeln;
+          Writeln('COMSPEC: ', GetEnv('COMSPEC'));
+          Writeln;
+          Writeln('Free Memory: ', MemAvail, ' bytes (', MemAvail div 1024, 'K)');
+          Writeln('Largest Block: ', MaxAvail, ' bytes (', MaxAvail div 1024, 'K)');
+          Writeln;
+          Write('Executing command ... ');
+          
+          { Execute the command using DOS shell }
+          SwapVectors;
+          Exec(GetEnv('COMSPEC'), '/C ' + SelectedOption^.Path);
+          SwapVectors;
+          
+          { Check if execution was successful }
+          if DosError = 0 then
+            Writeln('Command completed successfully.')
+          else
+          begin
+            Writeln('Command execution failed.');
+            case DosError of
+              2: Writeln('[2] File/path not found');
+              3: Writeln('[3] Path not found');
+              4: Writeln('[4] Too many files open (no handles left)');
+              5: Writeln('[5] Access denied');
+              8: Writeln('[8] Not enough memory to load program');
+              10: Writeln('[10] Illegal environment (greater than 32K)');
+              11: Writeln('[11] Illegal .EXE file format');
+              32: Writeln('[32] Sharing violation');
+              33: Writeln('[33] Lock violation');
+            end;
+          end;
+          
           Writeln;
           Write('Press any key to continue ... ');
           Ch := ReadKey;
