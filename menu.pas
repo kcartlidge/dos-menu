@@ -26,22 +26,12 @@ var
   MenuList: PMenu;
   TopMenu: PMenu;
   OriginalTextColor, OriginalBackgroundColor: Byte;
-
-{ Clear the screen with menu colors }
-procedure ClearScreenWithMenuColors;
-begin
-  TextBackground(Blue);
-  TextColor(Yellow);
-  ClrScr;
-end;
-
-{ Clear the screen with (saved) original colors }
-procedure ClearScreenWithOriginalColors;
-begin
-  TextBackground(OriginalBackgroundColor);
-  TextColor(OriginalTextColor);
-  ClrScr;
-end;
+  GlobalBackgroundColor: Byte;
+  GlobalTextColor: Byte;
+  GlobalKeyColor: Byte;
+  GlobalKeyBackgroundColor: Byte;
+  GlobalTitleColor: Byte;
+  GlobalTitleBackgroundColor: Byte;
 
 { Trim whitespace from both ends of a string }
 function Trim(S: string): string;
@@ -75,6 +65,47 @@ begin
   ToUpper := Result;
 end;
 
+{ Parse a color name and return the corresponding color value }
+function ParseColor(ColorName: string): Byte;
+var
+  UpperColor: string;
+begin
+  UpperColor := ToUpper(Trim(ColorName));
+  if UpperColor = 'BLACK' then ParseColor := 0
+  else if UpperColor = 'BLUE' then ParseColor := 1
+  else if UpperColor = 'GREEN' then ParseColor := 2
+  else if UpperColor = 'CYAN' then ParseColor := 3
+  else if UpperColor = 'RED' then ParseColor := 4
+  else if UpperColor = 'MAGENTA' then ParseColor := 5
+  else if UpperColor = 'BROWN' then ParseColor := 6
+  else if UpperColor = 'LIGHTGRAY' then ParseColor := 7
+  else if UpperColor = 'DARKGRAY' then ParseColor := 8
+  else if UpperColor = 'LIGHTBLUE' then ParseColor := 9
+  else if UpperColor = 'LIGHTGREEN' then ParseColor := 10
+  else if UpperColor = 'LIGHTCYAN' then ParseColor := 11
+  else if UpperColor = 'LIGHTRED' then ParseColor := 12
+  else if UpperColor = 'LIGHTMAGENTA' then ParseColor := 13
+  else if UpperColor = 'YELLOW' then ParseColor := 14
+  else if UpperColor = 'WHITE' then ParseColor := 15
+  else ParseColor := 7; { Default to light gray if unknown }
+end;
+
+{ Clear the screen with menu colors }
+procedure ClearScreenWithMenuColors;
+begin
+  TextBackground(GlobalBackgroundColor);
+  TextColor(GlobalTextColor);
+  ClrScr;
+end;
+
+{ Clear the screen with (saved) original colors }
+procedure ClearScreenWithOriginalColors;
+begin
+  TextBackground(OriginalBackgroundColor);
+  TextColor(OriginalTextColor);
+  ClrScr;
+end;
+
 { Load a menu file from disk }
 procedure LoadMenuFile(MenuFilename: string);
 var
@@ -92,6 +123,7 @@ var
   MenuCount: integer;
   OptionCount: integer;
   StopReading: Boolean;
+  UpperPath: string;
 begin
   { Check if the file has an .ini extension }
   if (Pos('.INI', MenuFilename) = 0) then
@@ -121,6 +153,15 @@ begin
   MenuCount := 0;
   OptionCount := 0;
   StopReading := False;
+  
+  { Initialize global colors with defaults }
+  GlobalBackgroundColor := Blue;
+  GlobalTextColor := Yellow;
+  GlobalKeyColor := White;
+  GlobalKeyBackgroundColor := Black;
+  GlobalTitleColor := White;
+  GlobalTitleBackgroundColor := Blue;
+  
   Writeln;
   while (not Eof(F)) and (not StopReading) do
   begin
@@ -176,9 +217,46 @@ begin
       end
       else
       begin
-        { Check if this is a menu option (contains =) }
+        { Check if this is a global property (BACK=, TEXT=, KEYS=) before any menu section }
         EqualPos := Pos('=', Line);
-        if (EqualPos > 1) and (CurrentMenu <> nil) then
+        if (EqualPos > 1) and (CurrentMenu = nil) then
+        begin
+          OptionName := Trim(Copy(Line, 1, EqualPos - 1));
+          OptionPath := Trim(Copy(Line, EqualPos + 1, Length(Line) - EqualPos));
+          
+          { Parse global color properties }
+          if ToUpper(OptionName) = 'TITLE' then 
+          begin
+            { Parse "textcolor on backgroundcolor" format }
+            UpperPath := ToUpper(OptionPath);
+            if Pos(' ON ', UpperPath) > 0 then
+            begin
+              GlobalTitleColor := ParseColor(Trim(Copy(OptionPath, 1, Pos(' ON ', UpperPath) - 1)));
+              GlobalTitleBackgroundColor := ParseColor(Trim(Copy(OptionPath, Pos(' ON ', UpperPath) + 4, Length(OptionPath))));
+            end;
+          end
+          else if ToUpper(OptionName) = 'TEXT' then 
+          begin
+            { Parse "textcolor on backgroundcolor" format }
+            UpperPath := ToUpper(OptionPath);
+            if Pos(' ON ', UpperPath) > 0 then
+            begin
+              GlobalTextColor := ParseColor(Trim(Copy(OptionPath, 1, Pos(' ON ', UpperPath) - 1)));
+              GlobalBackgroundColor := ParseColor(Trim(Copy(OptionPath, Pos(' ON ', UpperPath) + 4, Length(OptionPath))));
+            end;
+          end
+          else if ToUpper(OptionName) = 'KEYS' then 
+          begin
+            { Parse "textcolor on backgroundcolor" format }
+            UpperPath := ToUpper(OptionPath);
+            if Pos(' ON ', UpperPath) > 0 then
+            begin
+              GlobalKeyColor := ParseColor(Trim(Copy(OptionPath, 1, Pos(' ON ', UpperPath) - 1)));
+              GlobalKeyBackgroundColor := ParseColor(Trim(Copy(OptionPath, Pos(' ON ', UpperPath) + 4, Length(OptionPath))));
+            end;
+          end;
+        end
+        else if (EqualPos > 1) and (CurrentMenu <> nil) then
         begin
           { Check if we've reached the maximum number of options for this menu }
           if OptionCount >= 12 then
@@ -228,11 +306,11 @@ end;
 procedure ShowOption(Letter: Char; Text: string);
 begin
   Write(' ');
-  TextColor(White);
-  TextBackground(Black);
+  TextColor(GlobalKeyColor);
+  TextBackground(GlobalKeyBackgroundColor);
   Write(' ', Letter, ' ');
-  TextColor(Yellow);
-  TextBackground(Blue);
+  TextColor(GlobalTextColor);
+  TextBackground(GlobalBackgroundColor);
   Writeln(' ', Text);
 end;
 
@@ -257,9 +335,11 @@ begin
     { Show the menu title }
     ClearScreenWithMenuColors;
     Writeln;
-    TextColor(White);
+    TextColor(GlobalTitleColor);
+    TextBackground(GlobalTitleBackgroundColor);
     Writeln(' ', ToUpper(MenuToDisplay^.Title));
-    TextColor(Yellow);
+    TextColor(GlobalTextColor);
+    TextBackground(GlobalBackgroundColor);
     Writeln;
     
     { Display options with single character prefix }
